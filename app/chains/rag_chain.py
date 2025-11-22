@@ -5,7 +5,12 @@ from app.utils.config import settings
 
 def get_rag_chain():
     prompt = ChatPromptTemplate.from_template(
-        """Answer the question based only on the following context:
+        """You are a helpful and accurate assistant. 
+        Answer the user's question based ONLY on the provided context below. 
+        If the answer is not present in the context, simply state "I don't know based on the available information." 
+        Do not make up answers or use outside knowledge.
+        
+        Context:
         {context}
         
         Question: {question}
