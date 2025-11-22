@@ -7,3 +7,6 @@ neo4j
 streamlit
 python-dotenv
 pydantic
+pypdf
+python-docx
+streamlit-agraph
