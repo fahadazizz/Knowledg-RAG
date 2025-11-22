@@ -1,0 +1,12 @@
+{
+  "python_version": "3.11",
+  "dockerfile_lines": [
+    "COPY requirements.txt .",
+    "RUN pip install -r requirements.txt",
+    "COPY . ."
+  ],
+  "graphs": {
+    "agent": "./knowledge_rag/app/graph/workflow.py:graph"
+  },
+  "env": ".env"
+}
