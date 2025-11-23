@@ -1,55 +1,92 @@
+"""
+Knowledge RAG - Enhanced Streamlit Application
+Multi-page UI with file upload, chat, and graph visualization.
+"""
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 import streamlit as st
-import os
-from app.graph.workflow import graph
+from app.ui.views.upload import render_upload_page
+from app.ui.views.chat import render_chat_page
+from app.ui.views.graph import render_graph_page
 
-st.set_page_config(page_title="Knowledge RAG", page_icon="🤖")
+st.set_page_config(
+    page_title="Knowledge RAG", 
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("Knowledge RAG Agent 🤖")
+# Custom CSS for better styling
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 3rem;
+        font-weight: bold;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .upload-zone {
+        border: 2px dashed #667eea;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        margin: 2rem 0;
+    }
+    .success-box {
+        padding: 1rem;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 5px;
+        color: #155724;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Sidebar for configuration
-with st.sidebar:
-    st.header("Configuration")
-    st.info("Ensure your API keys are set in the .env file or environment variables.")
-
-# Initialize chat history
+# Initialize session state
+if "documents_uploaded" not in st.session_state:
+    st.session_state.documents_uploaded = False
+if "document_text" not in st.session_state:
+    st.session_state.document_text = ""
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "upload"
 
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Sidebar navigation
+with st.sidebar:
+    st.image("https://via.placeholder.com/150x50/667eea/ffffff?text=Knowledge+RAG", use_container_width=True)
+    st.markdown("### 🧭 Navigation")
+    
+    if st.button("📤 Upload Documents", use_container_width=True):
+        st.session_state.current_page = "upload"
+    
+    if st.button("💬 Chat with Agent", use_container_width=True):
+        st.session_state.current_page = "chat"
+    
+    if st.button("🗺️ Graph Visualization", use_container_width=True):
+        st.session_state.current_page = "graph"
+    
+    st.markdown("---")
+    st.markdown("### 📊 Status")
+    if st.session_state.documents_uploaded:
+        st.success("✅ Documents Loaded")
+    else:
+        st.warning("⏳ No Documents")
 
-# React to user input
-if prompt := st.chat_input("What would you like to know?"):
-    # Display user message in chat message container
-    st.chat_message("user").markdown(prompt)
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Main content area
+if st.session_state.current_page == "upload":
+    render_upload_page()
 
-    # Call the agent
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        # Invoke the graph
-        inputs = {"question": prompt}
-        try:
-            # Run the graph
-            result = graph.invoke(inputs)
-            full_response = result.get("generation", "I couldn't generate an answer.")
-            
-            message_placeholder.markdown(full_response)
-            
-            # Add assistant response to chat history
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-            # Optional: Show steps or retrieved documents in an expander
-            with st.expander("View Retrieval Details"):
-                if "documents" in result:
-                    for i, doc in enumerate(result["documents"]):
-                        st.markdown(f"**Document {i+1}:**")
-                        st.text(doc)
-                        
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
+elif st.session_state.current_page == "chat":
+    render_chat_page()
+
+elif st.session_state.current_page == "graph":
+    render_graph_page()
