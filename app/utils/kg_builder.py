@@ -116,19 +116,38 @@ Return ONLY the JSON, no other text."""
     
     def build_graph_from_text(self, text_chunks: List[str]) -> None:
         """
-        Process text chunks and build knowledge graph.
+        Process text chunks and build knowledge graph using parallel processing.
         
         Args:
             text_chunks: List of text chunks to process
         """
         print(f"Building knowledge graph from {len(text_chunks)} chunks...")
         
-        for i, chunk in enumerate(text_chunks):
-            print(f"Processing chunk {i+1}/{len(text_chunks)}...")
+        import concurrent.futures
+        
+        # Function to process a single chunk (extraction only)
+        def process_chunk_extraction(chunk):
+            return self.extract_entities_and_relations(chunk)
+
+        # Parallel extraction
+        results = []
+        print("Extracting entities and relations in parallel...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # Submit all tasks
+            future_to_chunk = {executor.submit(process_chunk_extraction, chunk): i for i, chunk in enumerate(text_chunks)}
             
-            # Extract entities and relations
-            result = self.extract_entities_and_relations(chunk)
-            
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                i = future_to_chunk[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                    print(f"Processed chunk {i+1}/{len(text_chunks)}")
+                except Exception as e:
+                    print(f"Error processing chunk {i+1}: {e}")
+
+        # Sequential writing to avoid database locking issues
+        print("Writing to Neo4j...")
+        for i, result in enumerate(results):
             # Create entities
             for entity in result.get("entities", []):
                 self.create_entity(entity)

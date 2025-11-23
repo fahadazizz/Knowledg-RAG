@@ -77,3 +77,53 @@ def query_graph(query: str):
     except Exception as e:
         print(f"Error executing graph query: {e}")
         return []
+
+def get_graph_visualization_data(limit: int = 100):
+    """
+    Fetches nodes and relationships for visualization.
+    
+    Args:
+        limit (int): Maximum number of relationships to fetch.
+        
+    Returns:
+        Tuple[List[dict], List[dict]]: Lists of nodes and edges.
+    """
+    try:
+        graph = get_graph_store()
+        # Query to get nodes and relationships
+        query = f"""
+        MATCH (n)-[r]->(m)
+        RETURN n, r, m
+        LIMIT {limit}
+        """
+        data = graph.query(query)
+        
+        nodes = {}
+        edges = []
+        
+        for record in data:
+            source = record['n']
+            target = record['m']
+            rel = record['r']
+            
+            # Process source node
+            source_id = source.get('name', 'Unknown')
+            source_type = list(source.get('labels', ['Concept']))[0] if hasattr(source, 'labels') else 'Concept'
+            nodes[source_id] = {'id': source_id, 'label': source_id, 'type': source_type}
+            
+            # Process target node
+            target_id = target.get('name', 'Unknown')
+            target_type = list(target.get('labels', ['Concept']))[0] if hasattr(target, 'labels') else 'Concept'
+            nodes[target_id] = {'id': target_id, 'label': target_id, 'type': target_type}
+            
+            # Process edge
+            edges.append({
+                'source': source_id,
+                'target': target_id,
+                'label': rel[1] if isinstance(rel, tuple) else rel.get('type', 'RELATED_TO')
+            })
+            
+        return list(nodes.values()), edges
+    except Exception as e:
+        print(f"Error fetching graph data: {e}")
+        return [], []
