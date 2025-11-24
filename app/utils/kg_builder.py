@@ -27,26 +27,63 @@ class KnowledgeGraphBuilder:
         Returns:
             Dictionary containing entities and relations
         """
-        prompt = f"""Extract entities and relationships from the following text.
-        
-Format your response as valid JSON with this structure:
+        prompt = f"""Extract entities and relationships from the following text using the Universal Knowledge Graph Schema.
+
+You MUST obey the following constraints:
+
+ENTITY TYPES (Strict):
+DOCUMENT, SECTION, PERSON, ORGANIZATION, CONCEPT,
+TECHNOLOGY, COMPONENT, PROCESS, ATTRIBUTE,
+EVENT, LOCATION, OUTCOME
+
+RELATION TYPES (Strict):
+HAS_SECTION, MENTIONS, AUTHORED_BY, WORKS_FOR,
+USES, IMPLEMENTS, HAS_ATTRIBUTE, PRODUCES,
+INTERACTS_WITH, LOCATED_AT, PART_OF, DEFINES
+
+MANDATORY EXTRACTION RULES:
+1. ALWAYS create exactly ONE DOCUMENT entity.
+   - Use the provided document title or infer a short name.
+   - All other entities MUST connect back to this DOCUMENT.
+
+2. Extract SECTION entities whenever the text shows structure 
+   (headers, bullets, subsections).  
+   - Connect them using HAS_SECTION from DOCUMENT → SECTION.
+
+3. Extract ONLY explicit entities or relations directly stated in the text.  
+   - No assumptions. No filling gaps.
+
+4. Every entity MUST have:
+   - "name"
+   - "type"
+   - "properties": include a "source_span" with the exact phrase extracted.
+
+5. Every relation MUST use ONLY allowed relation types.
+
+6. Every extracted entity (except DOCUMENT) MUST be connected using at least ONE relation.
+   - No floating nodes.
+
+7. Normalize similar entities:
+   - lowercase technology names
+   - merge repeated names into a single canonical representation
+
+
+OUTPUT FORMAT (Strict JSON):
 {{
-    "entities": [
-        {{"name": "entity_name", "type": "entity_type", "properties": {{}}}},
-        ...
-    ],
-    "relations": [
-        {{"source": "entity1", "target": "entity2", "type": "relation_type"}},
-        ...
-    ]
+  "entities": [
+    {{"name": "string", "type": "ENTITY_TYPE", "properties": {{"source_span": "text"}}}},
+    ...
+  ],
+  "relations": [
+    {{"source": "entity_name", "target": "entity_name", "type": "RELATION_TYPE"}},
+    ...
+  ]
 }}
 
-Entity types can be: PERSON, ORGANIZATION, LOCATION, CONCEPT, EVENT, TECHNOLOGY, etc.
-Relation types can be: WORKS_FOR, LOCATED_IN, PART_OF, CREATED, RELATED_TO, etc.
+Text:
+{text}
 
-Text: {text}
-
-Return ONLY the JSON, no other text."""
+Return ONLY valid JSON."""
 
         try:
             response = self.llm.invoke(prompt).content
