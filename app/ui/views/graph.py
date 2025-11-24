@@ -23,19 +23,14 @@ def render_graph_page():
     else:
         # Define color palette for different entity types
         color_map = {
-            "DOCUMENT": "#FF9F43",     # Orange
-            "SECTION": "#FECA57",      # Light Orange
-            "PERSON": "#FF6B6B",       # Red
+            "PERSON": "#FF6B6B",      # Red
             "ORGANIZATION": "#4ECDC4", # Teal
-            "CONCEPT": "#45B7D1",      # Blue
-            "TECHNOLOGY": "#6C5CE7",   # Purple
-            "COMPONENT": "#A8E6CF",    # Mint
-            "PROCESS": "#FFD93D",      # Yellow
-            "ATTRIBUTE": "#FF8B94",    # Pink
-            "EVENT": "#FFA502",        # Dark Orange
-            "LOCATION": "#2ECC71",     # Green
-            "OUTCOME": "#95A5A6",      # Grey
-            "Unknown": "#BDC3C7"       # Light Grey
+            "LOCATION": "#45B7D1",    # Blue
+            "CONCEPT": "#96CEB4",     # Green
+            "EVENT": "#FFD93D",       # Yellow
+            "TECHNOLOGY": "#6C5CE7",  # Purple
+            "PRODUCT": "#A8E6CF",     # Mint
+            "Unknown": "#95A5A6"      # Grey
         }
         
         # Create Agraph nodes

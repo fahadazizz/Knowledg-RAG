@@ -38,12 +38,13 @@ def render_upload_page():
                         pipeline = DocumentPipeline()
                         
                         # Show progress
-                        with st.status("Processing pipeline...", expanded=True) as status:
+                        with st.status("Processing Pure Graph Pipeline...", expanded=True) as status:
                             st.write("📄 Cleaning documents...")
-                            st.write("✂️ Creating semantic chunks...")
+                            st.write("✂️ Creating structural chunks...")
                             st.write("🔍 Extracting entities and relations...")
-                            st.write("🗺️ Building knowledge graph...")
-                            st.write("🧮 Creating vector embeddings...")
+                            st.write("🔗 Canonicalizing entities...")
+                            st.write("✅ Validating relations...")
+                            st.write("🗺️ Building knowledge graph in Neo4j...")
                             
                             results = pipeline.process_documents(all_text)
                             

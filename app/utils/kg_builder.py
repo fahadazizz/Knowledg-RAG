@@ -6,6 +6,7 @@ from app.tools.graph_store import get_graph_store
 from langchain_ollama import ChatOllama
 from app.utils.config import settings
 import json
+import concurrent.futures
 
 class KnowledgeGraphBuilder:
     """Handles construction of knowledge graphs in Neo4j."""
@@ -14,76 +15,41 @@ class KnowledgeGraphBuilder:
         self.graph = get_graph_store()
         self.llm = ChatOllama(
             model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_BASE_URL
+            base_url=settings.OLLAMA_BASE_URL,
+            temperature=0  # Deterministic output
         )
     
     def extract_entities_and_relations(self, text: str) -> Dict[str, Any]:
         """
-        Extract entities and relationships from text using LLM.
-        
-        Args:
-            text: Text chunk to process
-            
-        Returns:
-            Dictionary containing entities and relations
+        Extract entities and relationships from text using LLM with improved prompting.
         """
-        prompt = f"""Extract entities and relationships from the following text using the Universal Knowledge Graph Schema.
-
-You MUST obey the following constraints:
-
-ENTITY TYPES (Strict):
-DOCUMENT, SECTION, PERSON, ORGANIZATION, CONCEPT,
-TECHNOLOGY, COMPONENT, PROCESS, ATTRIBUTE,
-EVENT, LOCATION, OUTCOME
-
-RELATION TYPES (Strict):
-HAS_SECTION, MENTIONS, AUTHORED_BY, WORKS_FOR,
-USES, IMPLEMENTS, HAS_ATTRIBUTE, PRODUCES,
-INTERACTS_WITH, LOCATED_AT, PART_OF, DEFINES
-
-MANDATORY EXTRACTION RULES:
-1. ALWAYS create exactly ONE DOCUMENT entity.
-   - Use the provided document title or infer a short name.
-   - All other entities MUST connect back to this DOCUMENT.
-
-2. Extract SECTION entities whenever the text shows structure 
-   (headers, bullets, subsections).  
-   - Connect them using HAS_SECTION from DOCUMENT → SECTION.
-
-3. Extract ONLY explicit entities or relations directly stated in the text.  
-   - No assumptions. No filling gaps.
-
-4. Every entity MUST have:
-   - "name"
-   - "type"
-   - "properties": include a "source_span" with the exact phrase extracted.
-
-5. Every relation MUST use ONLY allowed relation types.
-
-6. Every extracted entity (except DOCUMENT) MUST be connected using at least ONE relation.
-   - No floating nodes.
-
-7. Normalize similar entities:
-   - lowercase technology names
-   - merge repeated names into a single canonical representation
-
-
-OUTPUT FORMAT (Strict JSON):
-{{
-  "entities": [
-    {{"name": "string", "type": "ENTITY_TYPE", "properties": {{"source_span": "text"}}}},
-    ...
-  ],
-  "relations": [
-    {{"source": "entity_name", "target": "entity_name", "type": "RELATION_TYPE"}},
-    ...
-  ]
-}}
-
-Text:
-{text}
-
-Return ONLY valid JSON."""
+        prompt = f"""
+        You are an expert Knowledge Graph Engineer. Your task is to extract structured information from the provided text.
+        Identify key entities and the relationships between them.
+        
+        Guidelines:
+        1. **Entities**: Extract significant entities (Person, Organization, Location, Concept, Event, Technology, etc.).
+           - Normalize names (e.g., "Google Inc." -> "Google").
+           - Avoid generic terms like "company", "user", "it".
+        2. **Relations**: Extract meaningful relationships between these entities.
+           - Use active verbs (e.g., WORKS_FOR, LOCATED_IN, USES, DEVELOPED_BY).
+        3. **Output**: Return ONLY a valid JSON object.
+        
+        Text:
+        {text}
+        
+        JSON Structure:
+        {{
+            "entities": [
+                {{"name": "Entity Name", "type": "ENTITY_TYPE", "properties": {{"description": "brief description"}}}},
+                ...
+            ],
+            "relations": [
+                {{"source": "Entity Name 1", "target": "Entity Name 2", "type": "RELATION_TYPE", "properties": {{"context": "brief context"}}}},
+                ...
+            ]
+        }}
+        """
 
         try:
             response = self.llm.invoke(prompt).content
@@ -100,101 +66,160 @@ Return ONLY valid JSON."""
         except Exception as e:
             print(f"Error extracting entities and relations: {e}")
             return {"entities": [], "relations": []}
-    
-    def create_entity(self, entity: Dict[str, Any]) -> None:
-        """
-        Create an entity node in Neo4j.
-        
-        Args:
-            entity: Entity dictionary with name, type, and properties
-        """
-        try:
-            name = entity.get("name", "")
-            entity_type = entity.get("type", "CONCEPT")
-            properties = entity.get("properties", {})
-            
-            # Create node with properties
-            props_str = ", ".join([f"{k}: ${k}" for k in properties.keys()])
-            if props_str:
-                props_str = ", " + props_str
-            
-            query = f"""
-            MERGE (e:{entity_type} {{name: $name{props_str}}})
-            RETURN e
-            """
-            
-            params = {"name": name, **properties}
-            self.graph.query(query, params)
-        except Exception as e:
-            print(f"Error creating entity {entity}: {e}")
-    
-    def create_relation(self, relation: Dict[str, Any]) -> None:
-        """
-        Create a relationship between entities in Neo4j.
-        
-        Args:
-            relation: Relation dictionary with source, target, and type
-        """
-        try:
-            source = relation.get("source", "")
-            target = relation.get("target", "")
-            rel_type = relation.get("type", "RELATED_TO")
-            
-            query = f"""
-            MATCH (a {{name: $source}})
-            MATCH (b {{name: $target}})
-            MERGE (a)-[r:{rel_type}]->(b)
-            RETURN r
-            """
-            
-            self.graph.query(query, {"source": source, "target": target})
-        except Exception as e:
-            print(f"Error creating relation {relation}: {e}")
-    
-    def build_graph_from_text(self, text_chunks: List[str]) -> None:
-        """
-        Process text chunks and build knowledge graph using parallel processing.
-        
-        Args:
-            text_chunks: List of text chunks to process
-        """
-        print(f"Building knowledge graph from {len(text_chunks)} chunks...")
-        
-        import concurrent.futures
-        
-        # Function to process a single chunk (extraction only)
-        def process_chunk_extraction(chunk):
-            return self.extract_entities_and_relations(chunk)
 
-        # Parallel extraction
+    
+    def extract_from_chunks(self, chunk_texts: List[str], chunk_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Extract entities and relations from chunks in parallel without writing to DB.
+        Returns list of results with chunk_id included.
+        """
+        print(f"Extracting from {len(chunk_texts)} chunks...")
+        
+        # Function to process a single chunk
+        def process_chunk_extraction(chunk_data):
+            text, chunk_id = chunk_data
+            result = self.extract_entities_and_relations(text)
+            result["chunk_id"] = chunk_id
+            return result
+
         results = []
-        print("Extracting entities and relations in parallel...")
+        chunk_data_list = list(zip(chunk_texts, chunk_ids))
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            # Submit all tasks
-            future_to_chunk = {executor.submit(process_chunk_extraction, chunk): i for i, chunk in enumerate(text_chunks)}
+            future_to_chunk = {executor.submit(process_chunk_extraction, data): i for i, data in enumerate(chunk_data_list)}
             
             for future in concurrent.futures.as_completed(future_to_chunk):
                 i = future_to_chunk[future]
                 try:
                     result = future.result()
                     results.append(result)
-                    print(f"Processed chunk {i+1}/{len(text_chunks)}")
+                    print(f"Extracted from chunk {i+1}/{len(chunk_texts)}")
                 except Exception as e:
-                    print(f"Error processing chunk {i+1}: {e}")
+                    print(f"Error extracting from chunk {i+1}: {e}")
+                    
+        return results
 
-        # Sequential writing to avoid database locking issues
-        print("Writing to Neo4j...")
-        for i, result in enumerate(results):
-            # Create entities
-            for entity in result.get("entities", []):
-                self.create_entity(entity)
-            
-            # Create relations
-            for relation in result.get("relations", []):
-                self.create_relation(relation)
+    def build_pure_graph(self, doc_id: str, chunks: List[Dict[str, Any]], extraction_results: List[Dict[str, Any]]) -> None:
+        """
+        Build the pure knowledge graph in Neo4j.
+        Schema:
+        (Document {id}) -[:HAS_SECTION]-> (Section {id, text})
+        (Section) -[:MENTIONS]-> (Entity)
+        (Entity) -[:RELATION]-> (Entity)
+        """
+        print(f"Building pure graph for Document {doc_id}...")
         
-        print("Knowledge graph construction complete!")
-    
+        try:
+            # 1. Create Document Node
+            self.graph.query(
+                "MERGE (d:Document {id: $id})", 
+                {"id": doc_id}
+            )
+            
+            # 2. Create Section Nodes and link to Document
+            # Batch this
+            section_batch = [{"id": c["id"], "text": c["text"], "doc_id": doc_id} for c in chunks]
+            
+            query_sections = """
+            UNWIND $batch as row
+            MATCH (d:Document {id: row.doc_id})
+            MERGE (s:Section {id: row.id})
+            SET s.text = row.text
+            MERGE (d)-[:HAS_SECTION]->(s)
+            """
+            self.graph.query(query_sections, {"batch": section_batch})
+            
+            # 3. Create Entities and Relations (using batch writer)
+            self._batch_write_pure_graph(extraction_results)
+            
+            print(f"✅ Graph built for Document {doc_id}")
+            
+        except Exception as e:
+            print(f"Error building pure graph: {e}")
+            raise e
+
+    def _batch_write_pure_graph(self, results: List[Dict[str, Any]]) -> None:
+        """
+        Write extracted entities and relations to Neo4j, linking to Sections.
+        """
+        all_entities = {}
+        all_relations = []
+        mentions = [] # (chunk_id, entity_name, entity_type)
+        
+        for res in results:
+            chunk_id = res.get("chunk_id")
+            
+            for entity in res.get("entities", []):
+                key = (entity["name"], entity["type"])
+                if key in all_entities:
+                    all_entities[key]["properties"].update(entity.get("properties", {}))
+                else:
+                    all_entities[key] = entity
+                
+                if chunk_id:
+                    mentions.append({"chunk_id": chunk_id, "entity_name": entity["name"], "entity_type": entity["type"]})
+            
+            for rel in res.get("relations", []):
+                all_relations.append(rel)
+        
+        # 1. Batch create entities
+        entity_list = [{"name": k[0], "type": k[1], "properties": v.get("properties", {})} for k, v in all_entities.items()]
+        
+        entities_by_type = {}
+        for ent in entity_list:
+            etype = ent["type"]
+            if etype not in entities_by_type:
+                entities_by_type[etype] = []
+            entities_by_type[etype].append(ent)
+            
+        for etype, batch in entities_by_type.items():
+            query = f"""
+            UNWIND $batch AS row
+            MERGE (e:`{etype}` {{name: row.name}})
+            SET e += row.properties
+            """
+            try:
+                self.graph.query(query, {"batch": batch})
+            except Exception as e:
+                print(f"Error batch creating entities of type {etype}: {e}")
+
+        # 2. Batch create relations
+        relations_by_type = {}
+        for rel in all_relations:
+            rtype = rel.get("type", "RELATED_TO")
+            if rtype not in relations_by_type:
+                relations_by_type[rtype] = []
+            relations_by_type[rtype].append(rel)
+            
+        for rtype, batch in relations_by_type.items():
+            query = f"""
+            UNWIND $batch AS row
+            MATCH (source {{name: row.source}})
+            MATCH (target {{name: row.target}})
+            MERGE (source)-[r:`{rtype}`]->(target)
+            SET r += row.properties
+            """
+            try:
+                self.graph.query(query, {"batch": batch})
+            except Exception as e:
+                print(f"Error batch creating relations of type {rtype}: {e}")
+                
+        # 3. Batch create MENTIONS relationships (Section -> Entity)
+        if mentions:
+            query = """
+            UNWIND $batch AS row
+            MATCH (s:Section {id: row.chunk_id})
+            MATCH (e {name: row.entity_name})
+            MERGE (s)-[:MENTIONS]->(e)
+            """
+            try:
+                batch_size = 1000
+                for i in range(0, len(mentions), batch_size):
+                    batch = mentions[i:i + batch_size]
+                    self.graph.query(query, {"batch": batch})
+            except Exception as e:
+                print(f"Error linking sections to entities: {e}")
+
     def clear_graph(self) -> None:
         """Clear all nodes and relationships from the graph."""
         try:
