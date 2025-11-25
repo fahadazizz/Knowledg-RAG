@@ -34,41 +34,49 @@ def render_upload_page():
                         # Store in session state
                         st.session_state.document_text = "\n\n".join(all_text)
                         
-                        # Process through pipeline
-                        pipeline = DocumentPipeline()
+                        # Initialize Ingestion Graph
+                        from app.graph.ingestion.workflow import ingestion_graph
                         
                         # Show progress
-                        with st.status("Processing Pure Graph Pipeline...", expanded=True) as status:
-                            st.write("📄 Cleaning documents...")
-                            st.write("✂️ Creating structural chunks...")
-                            st.write("🔍 Extracting entities and relations...")
-                            st.write("🔗 Canonicalizing entities...")
-                            st.write("✅ Validating relations...")
-                            st.write("🗺️ Building knowledge graph in Neo4j...")
+                        with st.status("Processing Ingestion Graph...", expanded=True) as status:
+                            st.write("🚀 Starting ingestion workflow...")
                             
-                            results = pipeline.process_documents(all_text)
+                            # Initial state
+                            initial_state = {
+                                "raw_documents": all_text,
+                                "cleaned_documents": [],
+                                "chunks": [],
+                                "extraction_results": [],
+                                "doc_ids": [],
+                                "status": "started",
+                                "error": ""
+                            }
                             
-                            if results["status"] == "success":
-                                status.update(label="✅ Processing complete!", state="complete")
-                            else:
-                                status.update(label="❌ Processing failed", state="error")
-                        
-                        # Display results
-                        if results["status"] == "success":
-                            st.session_state.documents_uploaded = True
-                            st.success("✅ Documents processed successfully!")
-                            
-                            # Show stats
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.metric("Total Chunks", results["total_chunks"])
-                            with col2:
-                                st.metric("Documents", results["total_documents"])
-                            
-                            st.balloons()
-                            st.info("🎯 Navigate to **Chat with Agent** to start asking questions or view the **Graph Visualization**.")
-                        else:
-                            st.error(f"❌ Error: {results.get('error', 'Unknown error')}")
+                            try:
+                                result = ingestion_graph.invoke(initial_state)
+                                
+                                if result.get("status") == "completed":
+                                    st.success("✅ Processing complete!")
+                                    st.session_state.documents_uploaded = True
+                                    
+                                    # Show stats
+                                    total_chunks = len(result.get("chunks", []))
+                                    total_docs = len(result.get("doc_ids", []))
+                                    
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("Total Chunks", total_chunks)
+                                    with col2:
+                                        st.metric("Documents", total_docs)
+                                    
+                                    st.balloons()
+                                    st.info("🎯 Navigate to **Chat with Agent** to start asking questions or view the **Graph Visualization**.")
+                                    
+                                else:
+                                    st.error(f"❌ Processing failed: {result.get('error')}")
+                                    
+                            except Exception as e:
+                                st.error(f"❌ An error occurred: {e}")
                         
                     except Exception as e:
                         st.error(f"❌ Error processing documents: {e}")

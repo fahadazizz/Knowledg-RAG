@@ -1,23 +1,36 @@
-from langgraph.graph import StateGraph, END
-from app.graph.state import AgentState
-from app.graph.nodes import retrieve, generate
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_ollama import ChatOllama
+from app.tools.tools import search_knowledge_graph
+from app.utils.config import settings
 
 def create_graph():
-    workflow = StateGraph(AgentState)
+    """
+    Creates a ReAct-style agent graph with persistence.
+    """
+    # 1. Initialize Model
+    model = ChatOllama(
+        model=settings.OLLAMA_MODEL,
+        base_url=settings.OLLAMA_BASE_URL,
+        temperature=0
+    )
     
-    # Add nodes
-    workflow.add_node("retrieve", retrieve)
-    workflow.add_node("generate", generate)
+    # 2. Define Tools
+    tools = [search_knowledge_graph]
     
-    # Set entry point
-    workflow.set_entry_point("retrieve")
+    # 3. Initialize Checkpointer for persistence
+    memory = MemorySaver()
     
-    # Add edges
-    workflow.add_edge("retrieve", "generate")
-    workflow.add_edge("generate", END)
+    # 4. Create ReAct Agent
+    # This prebuilt function creates a graph with 'agent' and 'tools' nodes
+    # and handles the conditional routing.
+    app = create_react_agent(
+        model=model,
+        tools=tools,
+        checkpointer=memory
+    )
     
-    # Compile
-    app = workflow.compile()
     return app
 
+# Compile the graph
 graph = create_graph()
