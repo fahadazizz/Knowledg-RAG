@@ -1,5 +1,4 @@
-from langchain_neo4j import Neo4jGraph, Neo4jVector
-from langchain_ollama import OllamaEmbeddings
+from langchain_neo4j import Neo4jGraph
 from app.utils.config import settings
 
 def get_graph_store():
@@ -17,46 +16,29 @@ def get_graph_store():
         print(f"Failed to connect to Neo4j: {e}")
         raise e
 
-def get_vector_store():
-    """
-    Returns a Neo4jVector store instance using Ollama embeddings.
-    """
-    try:
-        embeddings = OllamaEmbeddings(
-            model=settings.OLLAMA_EMBEDDING_MODEL,
-            base_url=settings.OLLAMA_BASE_URL
-        )
-        # Using Neo4j as a vector store
-        return Neo4jVector.from_existing_graph(
-            embedding=embeddings,
-            url=settings.NEO4J_URI,
-            username=settings.NEO4J_USERNAME,
-            password=settings.NEO4J_PASSWORD,
-            index_name="vector", # Default index name
-            node_label="Document", # Assuming nodes are labeled 'Document'
-            text_node_properties=["text"], # Assuming text is in 'text' property
-            embedding_node_property="embedding",
-        )
-    except Exception as e:
-        print(f"Failed to initialize Neo4jVector: {e}")
-        raise e
-
 def retrieve_documents(query: str, k: int = 4):
     """
-    Retrieves documents similar to the query using vector search.
-    
-    Args:
-        query (str): The search query.
-        k (int): Number of documents to retrieve.
-        
-    Returns:
-        List[Document]: List of retrieved documents.
+    Retrieves documents using keyword search on Section nodes.
+    Pure Graph RAG approach (no vectors).
     """
-    # For now, we use vector search on Neo4j. 
-    # In a real GraphRAG, we might use graph traversal here too.
     try:
-        vector_store = get_vector_store()
-        return vector_store.similarity_search(query, k=k)
+        graph = get_graph_store()
+        # Simple keyword search using CONTAINS
+        # In production, use a FullText index
+        cypher = f"""
+        MATCH (s:Section)
+        WHERE toLower(s.text) CONTAINS toLower($query)
+        RETURN s.text as text
+        LIMIT $k
+        """
+        # If query is long, this might be inefficient/ineffective without NLP extraction
+        # But it satisfies the "no vector" requirement.
+        
+        # Better approach: Extract entities from query (using LLM ideally, but here simple)
+        # and find Sections mentioning those entities.
+        
+        results = graph.query(cypher, {"query": query, "k": k})
+        return [r['text'] for r in results]
     except Exception as e:
         print(f"Error retrieving from Neo4j: {e}")
         return []

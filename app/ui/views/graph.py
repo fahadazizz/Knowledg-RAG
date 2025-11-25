@@ -1,8 +1,19 @@
 import streamlit as st
 from streamlit_agraph import agraph, Node, Edge, Config
 from app.tools.graph_store import get_graph_visualization_data
+from app.utils.kg_builder import KnowledgeGraphBuilder
 
 def render_graph_page():
+    # Clear Graph Button
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if st.button("🗑️ Clear Graph", type="secondary", use_container_width=True):
+            with st.spinner("Clearing knowledge graph..."):
+                kg_builder = KnowledgeGraphBuilder()
+                kg_builder.clear_graph()
+                st.success("Graph cleared successfully!")
+                st.rerun()
+
     # Fetch graph data
     with st.spinner("Fetching graph data..."):
         nodes_data, edges_data = get_graph_visualization_data(limit=100)

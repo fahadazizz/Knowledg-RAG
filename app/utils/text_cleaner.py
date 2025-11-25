@@ -17,11 +17,9 @@ def clean_text(text: str) -> str:
     # Remove excessive whitespace
     text = re.sub(r'\s+', ' ', text)
     
-    # Remove special characters but keep punctuation
-    text = re.sub(r'[^\w\s.,!?;:()\-\']', '', text)
-    
-    # Remove multiple consecutive punctuation
-    text = re.sub(r'([.,!?;:])\1+', r'\1', text)
+    # Remove control characters but keep printable ones
+    # This is safer than a whitelist approach for general text
+    text = "".join(ch for ch in text if ch.isprintable())
     
     # Strip leading/trailing whitespace
     text = text.strip()
