@@ -39,8 +39,7 @@ def create_graph(with_memory: bool = False):
     app = create_react_agent(
         model=model,
         tools=tools,
-        checkpointer=memory,
-        messages_modifier=system_prompt
+        checkpointer=memory
     )
     
     return app

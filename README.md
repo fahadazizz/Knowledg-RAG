@@ -34,6 +34,51 @@ Before you begin, ensure you have the following installed:
 2.  **Ollama**: [Install Ollama](https://ollama.com/)
 3.  **Git**: [Install Git](https://git-scm.com/)
 
+## 🚀 Running the API
+
+### 1. Local Development
+Start the FastAPI server:
+```bash
+python -m uvicorn app.server:app --reload
+```
+The API will be available at `http://localhost:8000`.
+- **Docs**: `http://localhost:8000/docs`
+
+### 2. Docker Deployment
+Build and run the container:
+```bash
+docker build -t knowledge-rag .
+docker run -p 8000:8000 --env-file .env knowledge-rag
+```
+
+## 📡 API Endpoints
+
+### `POST /ingest`
+Upload documents (PDF, DOCX, TXT) to the Knowledge Graph.
+```bash
+curl -X POST "http://localhost:8000/ingest" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "files=@/path/to/document.pdf"
+```
+
+### `POST /chat`
+Chat with the agent.
+```bash
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is the main topic?",
+    "thread_id": "session_123"
+  }'
+```
+
+## 🖥️ Running the UI (Streamlit)
+To run the Streamlit interface locally:
+```bash
+streamlit run app/ui/streamlit_app.py
+```
+
 ## ⚡ Getting Started
 
 ### 1. Clone the Repository
