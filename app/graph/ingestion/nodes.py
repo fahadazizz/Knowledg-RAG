@@ -57,16 +57,20 @@ def extract_node(state: IngestionState) -> Dict[str, Any]:
     chunk_texts = [c["text"] for c in chunks]
     chunk_ids = [c["id"] for c in chunks]
     
-    # Use existing parallel extraction logic
-    results = kg_builder.extract_from_chunks(chunk_texts, chunk_ids)
-    
-    # Add simple canonicalization here or in a separate node
-    # For now, we'll do a simple pass
-    for res in results:
-        for entity in res.get("entities", []):
-            entity["name"] = entity["name"].strip()
-            
-    return {"extraction_results": results, "status": "extracted"}
+    try:
+        # Use existing parallel extraction logic
+        results = kg_builder.extract_from_chunks(chunk_texts, chunk_ids)
+        
+        # Add simple canonicalization here or in a separate node
+        # For now, we'll do a simple pass
+        for res in results:
+            for entity in res.get("entities", []):
+                entity["name"] = entity["name"].strip()
+                
+        return {"extraction_results": results, "status": "extracted"}
+    except Exception as e:
+        print(f"Error in extraction node: {e}")
+        return {"extraction_results": [], "status": "extraction_failed", "error": str(e)}
 
 def build_node(state: IngestionState) -> Dict[str, Any]:
     """

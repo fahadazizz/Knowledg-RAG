@@ -16,31 +16,59 @@ def get_graph_store():
         print(f"Failed to connect to Neo4j: {e}")
         raise e
 
-def retrieve_documents(query: str, k: int = 4):
+def retrieve_subgraph(query: str, limit: int = 5):
     """
-    Retrieves documents using keyword search on Section nodes.
-    Pure Graph RAG approach (no vectors).
+    Retrieves a structured subgraph based on the query.
+    1. Finds entities matching the query.
+    2. Traverses 1-hop neighbors.
+    3. Fetches linked text sections.
     """
     try:
         graph = get_graph_store()
-        # Simple keyword search using CONTAINS
-        # In production, use a FullText index
-        cypher = f"""
-        MATCH (s:Section)
-        WHERE toLower(s.text) CONTAINS toLower($query)
-        RETURN s.text as text
-        LIMIT $k
+        
+        # 1. Find relevant entities and their 1-hop neighborhood
+        # We search for entities whose names contain the query keywords
+        # and return the entity, its relationships, and neighbors
+        cypher_graph = f"""
+        MATCH (e)
+        WHERE e.name IS NOT NULL AND toLower(e.name) CONTAINS toLower($query)
+        WITH e LIMIT {limit}
+        MATCH (e)-[r]-(neighbor)
+        RETURN e.name as entity, type(r) as relation, neighbor.name as neighbor, neighbor.type as neighbor_type
+        LIMIT 20
         """
-        # If query is long, this might be inefficient/ineffective without NLP extraction
-        # But it satisfies the "no vector" requirement.
         
-        # Better approach: Extract entities from query (using LLM ideally, but here simple)
-        # and find Sections mentioning those entities.
+        graph_results = graph.query(cypher_graph, {"query": query})
         
-        results = graph.query(cypher, {"query": query, "k": k})
-        return [r['text'] for r in results]
+        # 2. Find relevant text sections linked to these entities
+        cypher_text = f"""
+        MATCH (e)
+        WHERE e.name IS NOT NULL AND toLower(e.name) CONTAINS toLower($query)
+        WITH e LIMIT {limit}
+        MATCH (s:Section)-[:MENTIONS]->(e)
+        RETURN DISTINCT s.text as text
+        LIMIT {limit}
+        """
+        
+        text_results = graph.query(cypher_text, {"query": query})
+        
+        # Format the output
+        structured_info = []
+        
+        if graph_results:
+            structured_info.append("### Knowledge Graph Connections:")
+            for row in graph_results:
+                structured_info.append(f"- {row['entity']} --[{row['relation']}]--> {row['neighbor']} ({row['neighbor_type']})")
+        
+        if text_results:
+            structured_info.append("\n### Relevant Source Text:")
+            for row in text_results:
+                structured_info.append(f"- ...{row['text'][:300]}...")
+                
+        return structured_info
+        
     except Exception as e:
-        print(f"Error retrieving from Neo4j: {e}")
+        print(f"Error retrieving subgraph: {e}")
         return []
 
 def query_graph(query: str):

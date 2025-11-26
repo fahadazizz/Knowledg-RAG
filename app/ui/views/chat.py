@@ -1,5 +1,5 @@
 import streamlit as st
-from app.graph.workflow import graph
+from app.graph.workflow import local_graph as graph
 from langchain_core.messages import HumanMessage
 import uuid
 
