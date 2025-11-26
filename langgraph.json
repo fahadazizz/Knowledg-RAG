@@ -1,12 +1,9 @@
 {
   "python_version": "3.11",
-  "dockerfile_lines": [
-    "COPY requirements.txt .",
-    "RUN pip install -r requirements.txt",
-    "COPY . ."
-  ],
+  "dependencies": ["."],
   "graphs": {
-    "agent": "./knowledge_rag/app/graph/workflow.py:graph"
+    "agent": "./app/graph/workflow.py:graph",
+    "ingestion": "./app/graph/ingestion/workflow.py:ingestion_graph"
   },
   "env": ".env"
 }
